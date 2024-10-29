@@ -1,6 +1,7 @@
+use anyhow::Context;
 use argh::FromArgs;
 use chrono::{DateTime, Utc};
-use mediameta::{extract_combined_metadata};
+use mediameta::extract_combined_metadata;
 use std::fs::{self, File};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -42,43 +43,50 @@ impl From<RawArgs> for Args {
 fn main() -> anyhow::Result<()> {
     let args: RawArgs = argh::from_env();
     let args: Args = args.into();
-    let mut ctx = Context::default();
+    let mut ctx = AppContext::default();
     make_path(&mut ctx, &args.target)?;
     sync_media(&mut ctx, &args)?;
     Ok(())
 }
 
 #[derive(Default, Debug)]
-struct Context {
+struct AppContext {
     created_dirs: std::collections::HashSet<PathBuf>,
 }
 
-fn make_path(ctx: &mut Context, path: &Path) -> anyhow::Result<()> {
+fn make_path(ctx: &mut AppContext, path: &Path) -> anyhow::Result<()> {
     if ctx.created_dirs.contains(path) {
         return Ok(());
     }
 
-    fs::create_dir_all(path)?;
+    fs::create_dir_all(path)
+        .with_context(|| format!("Failed to create path [{}]", path.to_string_lossy()))?;
     ctx.created_dirs.insert(path.to_path_buf());
     Ok(())
 }
 
-fn sync_media(ctx: &mut Context, args: &Args) -> anyhow::Result<()> {
+fn sync_media(ctx: &mut AppContext, args: &Args) -> anyhow::Result<()> {
     let mut unrecognized_files: Vec<PathBuf> = Vec::new();
 
     for entry in walkdir::WalkDir::new(&args.source) {
-        let entry = entry?;
+        let entry = entry.with_context(|| "Failed to enumerate source directory")?;
         let path = entry.path();
         if path.is_file() {
             let metadata = extract_combined_metadata(path);
             if metadata.is_err() || metadata.as_ref().unwrap().creation_date.is_none() {
-                process_unrecognized_file(ctx, &args, path)?;
+                process_unrecognized_file(ctx, &args, path).with_context(|| {
+                    format!(
+                        "Failed to process unrecognized file [{}]",
+                        path.to_string_lossy()
+                    )
+                })?;
                 unrecognized_files.push(path.to_path_buf());
                 continue;
             }
             let creation_date = metadata.unwrap().creation_date.unwrap();
-            let creation_date : DateTime<Utc> = creation_date.into();
-            process_file(ctx, &path, &args.target, &creation_date)?;
+            let creation_date: DateTime<Utc> = creation_date.into();
+            process_file(ctx, &path, &args.target, &creation_date)
+                .with_context(|| format!("Failed to process file [{}]", path.to_string_lossy()))?;
         }
     }
 
@@ -91,84 +99,86 @@ fn sync_media(ctx: &mut Context, args: &Args) -> anyhow::Result<()> {
 }
 
 fn process_file(
-    ctx: &mut Context,
+    ctx: &mut AppContext,
     path: &Path,
     target: &Path,
-    creation_date: &DateTime<Utc>
+    creation_date: &DateTime<Utc>,
 ) -> anyhow::Result<()> {
     let target_subdir = creation_date.format("%Y/%m/%d").to_string();
     let target_dir = target.join(target_subdir);
     make_path(ctx, &target_dir)?;
 
-    let file_name = format_file_name(path, &target_dir, &creation_date)?;
-    let target_file = target_dir.join(file_name);
-    copy_or_index_file(path, &target_file)?;
+    let mut target_filename = creation_date.format("%Y-%m-%dT%H%M%S").to_string();
+    if let Some(extension) = path.extension() {
+        target_filename = format!("{target_filename}.{}", extension.to_string_lossy())
+    }
+
+    //let target_file = get_unique_path(&target_dir, &target_filename)?;
+    copy_file(path, &target, &target_filename)
+        .with_context(|| format!("Failed to copy file [{}]", path.to_string_lossy()))?;
     Ok(())
 }
 
-fn process_unrecognized_file(
-    ctx: &mut Context,
-    args: &Args,
-    path: &Path,
-) -> anyhow::Result<()> {
-    let file_name = path.file_name().expect("Cannot extract filename");
-    let target_file = args.unrecognized.join(file_name);
+fn process_unrecognized_file(ctx: &mut AppContext, args: &Args, path: &Path) -> anyhow::Result<()> {
+    let file_name = path
+        .file_name()
+        .expect("Cannot extract filename")
+        .to_string_lossy();
     make_path(ctx, &args.unrecognized)?;
-    copy_or_index_file(path, &target_file)
+    copy_file(path, &args.unrecognized, &file_name)
 }
 
-fn format_file_name(
-    original_path: &Path,
-    target_dir: &Path,
-    creation_date: &DateTime<Utc>,
-) -> io::Result<String> {
-    let formatted_name = creation_date.format("%Y-%m-%d %H:%M:%S").to_string();
+fn copy_file(source: &Path, target_dir: &Path, target_filename: &str) -> anyhow::Result<()> {
+    let source_metadata = fs::metadata(source).with_context(|| {
+        format!(
+            "Failed to get metadata of file [{}]",
+            source.to_string_lossy()
+        )
+    })?;
 
-    let mut unique_name = formatted_name.clone();
+    let (base_name, extension) = match target_filename.rfind('.') {
+        Some(pos) => (&target_filename[..pos], &target_filename[pos..]),
+        None => (target_filename, ""),
+    };
+
+    let mut target = target_dir.join(target_filename);
     let mut index = 1;
-    while target_dir.join(&unique_name).exists() {
-        unique_name = format!("{}-{}", formatted_name, index);
+    while target.exists() {
+        let target_metadata = fs::metadata(&target).with_context(|| {
+            format!(
+                "Failed to get metadata of file [{}]",
+                target.to_string_lossy()
+            )
+        })?;
+
+        if source_metadata.modified()? == target_metadata.modified()?
+            || source_metadata.len() == target_metadata.len()
+        {
+            println!(
+                "Duplicate has been found. Source: [{}], Target: [{}]",
+                source.display(),
+                target.display()
+            );
+            return Ok(());
+        }
+
+        let new_filename = format!("{base_name}_{index}{extension}");
+        target = target_dir.join(new_filename);
         index += 1;
     }
-    Ok(unique_name
-        + original_path
-            .extension()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .as_ref())
-}
 
-fn copy_or_index_file(source: &Path, target: &Path) -> anyhow::Result<()> {
-    if target.exists() {
-        let source_metadata = fs::metadata(source)?;
-        let target_metadata = fs::metadata(target)?;
+    fs::copy(&source, &target).with_context(|| {
+        format!(
+            "Failed to copy from [{}] to [{}]",
+            source.to_string_lossy(),
+            target.to_string_lossy()
+        )
+    })?;
 
-        if source_metadata.modified()? != target_metadata.modified()?
-            || source_metadata.len() != target_metadata.len()
-        {
-            let mut index = 1;
-            let mut unique_target = target.to_path_buf();
-            while unique_target.exists() {
-                unique_target.set_file_name(format!(
-                    "{}_{}",
-                    target.file_stem().unwrap().to_string_lossy(),
-                    index
-                ));
-                unique_target.set_extension(target.extension().unwrap_or_default());
-                index += 1;
-            }
-            fs::copy(source, unique_target)?;
-        }
-    } else {
-        fs::copy(source, target)?;
-    }
     Ok(())
 }
 
-fn log_unknown_files(
-    args: &Args,
-    unknown_files: &Vec<PathBuf>,
-) -> io::Result<()> {
+fn log_unknown_files(args: &Args, unknown_files: &Vec<PathBuf>) -> io::Result<()> {
     let log_path = args.unrecognized.join("unknown_files.log");
     let mut log_file = File::create(log_path)?;
     for file in unknown_files {
