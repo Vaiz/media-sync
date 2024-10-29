@@ -7,8 +7,8 @@ edition = "2021"
 anyhow = "1.0.91"
 argh = "0.1.12"
 chrono = "0.4.38"
-#mediameta = { version = "0.1.1" , features = ["mediainfo"] }
-mediameta = { git = "https://github.com/Vaiz/mediameta.git", branch = "0.1.2", features = ["mediainfo"] }
+mediameta = { version = "0.1.2" , features = ["mediainfo"] }
+#mediameta = { git = "https://github.com/Vaiz/mediameta.git", branch = "0.1.2", features = ["mediainfo"] }
 walkdir = "2.5.0"
 
 [patch.crates-io]
