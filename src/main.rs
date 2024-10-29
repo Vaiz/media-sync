@@ -9,23 +9,35 @@ use std::path::{Path, PathBuf};
 /// Organize a media library by creation date, moving media files from source to target directory.
 #[derive(FromArgs)]
 struct RawArgs {
-    /// source path to recursively search for media files
+    /// source path to recursively search for media files.
     #[argh(positional)]
     source: PathBuf,
 
-    /// target path to store organized media files
+    /// target path to store organized media files.
     #[argh(positional)]
     target: PathBuf,
 
-    /// subfolder for unrecognized media
+    /// subfolder for unrecognized media.
     #[argh(option, default = "\"unrecognized\".to_string()")]
     unrecognized: String,
+
+    /// allows to customize target dir based on media creation time.
+    /// The result path should be a set of folders.
+    #[argh(option, default = "\"%Y/%m/%d\".to_string()")]
+    target_dir_pattern: String,
+
+    /// allows to customize target filename based on media creation time.
+    /// The result path should be a valid filename.
+    #[argh(option, default = "\"%Y-%m-%dT%H%M%S\".to_string()")]
+    target_file_pattern: String,
 }
 
 struct Args {
     pub source: PathBuf,
     pub target: PathBuf,
     pub unrecognized: PathBuf,
+    pub target_dir_pattern: String,
+    pub target_file_pattern: String,
 }
 
 impl From<RawArgs> for Args {
@@ -36,6 +48,8 @@ impl From<RawArgs> for Args {
             source: value.source,
             target: value.target,
             unrecognized,
+            target_dir_pattern: value.target_dir_pattern,
+            target_file_pattern: value.target_file_pattern,
         }
     }
 }
@@ -85,7 +99,7 @@ fn sync_media(ctx: &mut AppContext, args: &Args) -> anyhow::Result<()> {
             }
             let creation_date = metadata.unwrap().creation_date.unwrap();
             let creation_date: DateTime<Utc> = creation_date.into();
-            process_file(ctx, &path, &args.target, &creation_date)
+            process_file(ctx, args, &path, &args.target, &creation_date)
                 .with_context(|| format!("Failed to process file [{}]", path.to_string_lossy()))?;
         }
     }
@@ -100,15 +114,16 @@ fn sync_media(ctx: &mut AppContext, args: &Args) -> anyhow::Result<()> {
 
 fn process_file(
     ctx: &mut AppContext,
+    args: &Args,
     path: &Path,
     target: &Path,
     creation_date: &DateTime<Utc>,
 ) -> anyhow::Result<()> {
-    let target_subdir = creation_date.format("%Y/%m/%d").to_string();
+    let target_subdir = creation_date.format(&args.target_dir_pattern).to_string();
     let target_dir = target.join(target_subdir);
     make_path(ctx, &target_dir)?;
 
-    let mut target_filename = creation_date.format("%Y-%m-%dT%H%M%S").to_string();
+    let mut target_filename = creation_date.format(&args.target_file_pattern).to_string();
     if let Some(extension) = path.extension() {
         target_filename = format!("{target_filename}.{}", extension.to_string_lossy())
     }
