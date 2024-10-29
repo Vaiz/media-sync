@@ -113,8 +113,7 @@ fn process_file(
         target_filename = format!("{target_filename}.{}", extension.to_string_lossy())
     }
 
-    //let target_file = get_unique_path(&target_dir, &target_filename)?;
-    copy_file(path, &target, &target_filename)
+    copy_file(path, &target_dir, &target_filename)
         .with_context(|| format!("Failed to copy file [{}]", path.to_string_lossy()))?;
     Ok(())
 }
