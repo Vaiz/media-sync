@@ -1,7 +1,7 @@
 use anyhow::Context;
 use argh::FromArgs;
 use chrono::{DateTime, Utc};
-use mediameta::extract_combined_metadata;
+use mediameta::extract_file_creation_date;
 use std::fs::{self, File};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -86,8 +86,8 @@ fn sync_media(ctx: &mut AppContext, args: &Args) -> anyhow::Result<()> {
         let entry = entry.with_context(|| "Failed to enumerate source directory")?;
         let path = entry.path();
         if path.is_file() {
-            let metadata = extract_combined_metadata(path);
-            if metadata.is_err() || metadata.as_ref().unwrap().creation_date.is_none() {
+            let creation_date = extract_file_creation_date(path);
+            if creation_date.is_err() {
                 process_unrecognized_file(ctx, &args, path).with_context(|| {
                     format!(
                         "Failed to process unrecognized file [{}]",
@@ -97,8 +97,7 @@ fn sync_media(ctx: &mut AppContext, args: &Args) -> anyhow::Result<()> {
                 unrecognized_files.push(path.to_path_buf());
                 continue;
             }
-            let creation_date = metadata.unwrap().creation_date.unwrap();
-            let creation_date: DateTime<Utc> = creation_date.into();
+            let creation_date: DateTime<Utc> = creation_date.unwrap().into();
             process_file(ctx, args, &path, &args.target, &creation_date)
                 .with_context(|| format!("Failed to process file [{}]", path.to_string_lossy()))?;
         }

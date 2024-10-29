@@ -332,9 +332,8 @@ dependencies = [
 
 [[package]]
 name = "mediameta"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "06e26e169ac3e627affee59ce7dd424427b7628df39007d22aab396a94a5de64"
+version = "0.1.2"
+source = "git+https://github.com/Vaiz/mediameta.git?branch=0.1.2#8ddcf5b8e334ecc36e277c61d98b9a2793598f18"
 dependencies = [
  "anyhow",
  "chrono",
