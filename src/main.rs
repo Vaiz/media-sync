@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 /// Organize a media library by creation date, moving media files from source to target directory.
 #[derive(FromArgs)]
-struct Args {
+struct RawArgs {
     /// source path to recursively search for media files
     #[argh(positional)]
     source: PathBuf,
@@ -15,13 +15,36 @@ struct Args {
     /// target path to store organized media files
     #[argh(positional)]
     target: PathBuf,
+
+    /// subfolder for unrecognized media
+    #[argh(option, default = "\"unrecognized\".to_string()")]
+    unrecognized: String,
+}
+
+struct Args {
+    pub source: PathBuf,
+    pub target: PathBuf,
+    pub unrecognized: PathBuf,
+}
+
+impl From<RawArgs> for Args {
+    fn from(value: RawArgs) -> Self {
+        let current_date = Utc::now().format("%Y-%m-%dT%H%M%S").to_string();
+        let unrecognized = value.target.join(&value.unrecognized).join(&current_date);
+        Self {
+            source: value.source,
+            target: value.target,
+            unrecognized,
+        }
+    }
 }
 
 fn main() -> anyhow::Result<()> {
-    let args: Args = argh::from_env();
+    let args: RawArgs = argh::from_env();
+    let args: Args = args.into();
     let mut ctx = Context::default();
     make_path(&mut ctx, &args.target)?;
-    sync_media(&mut ctx, &args.source, &args.target)?;
+    sync_media(&mut ctx, &args)?;
     Ok(())
 }
 
@@ -40,29 +63,28 @@ fn make_path(ctx: &mut Context, path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn sync_media(ctx: &mut Context, source: &Path, target: &Path) -> anyhow::Result<()> {
+fn sync_media(ctx: &mut Context, args: &Args) -> anyhow::Result<()> {
     let mut unrecognized_files: Vec<PathBuf> = Vec::new();
-    let current_date = Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
 
-    for entry in walkdir::WalkDir::new(source) {
+    for entry in walkdir::WalkDir::new(&args.source) {
         let entry = entry?;
         let path = entry.path();
         if path.is_file() {
             let metadata = extract_combined_metadata(path);
             if metadata.is_err() || metadata.as_ref().unwrap().creation_date.is_none() {
-                process_unrecognized_file(ctx, path, target, &current_date)?;
+                process_unrecognized_file(ctx, &args, path)?;
                 unrecognized_files.push(path.to_path_buf());
                 continue;
             }
             let creation_date = metadata.unwrap().creation_date.unwrap();
             let creation_date : DateTime<Utc> = creation_date.into();
-            process_file(ctx, &path, target, &creation_date)?;
+            process_file(ctx, &path, &args.target, &creation_date)?;
         }
     }
 
     // If any unknown files, log their paths
     if !unrecognized_files.is_empty() {
-        log_unknown_files(target, &current_date, unrecognized_files)?;
+        log_unknown_files(&args, &unrecognized_files)?;
     }
 
     Ok(())
@@ -86,13 +108,12 @@ fn process_file(
 
 fn process_unrecognized_file(
     ctx: &mut Context,
+    args: &Args,
     path: &Path,
-    target_dir: &Path,
-    current_date: &str,
 ) -> anyhow::Result<()> {
-    let unknown_path = target_dir.join("unrecognized").join(current_date);
-    let target_file = unknown_path.join(path.file_name().expect("Cannot extract filename"));
-    make_path(ctx, &unknown_path)?;
+    let file_name = path.file_name().expect("Cannot extract filename");
+    let target_file = args.unrecognized.join(file_name);
+    make_path(ctx, &args.unrecognized)?;
     copy_or_index_file(path, &target_file)
 }
 
@@ -145,13 +166,10 @@ fn copy_or_index_file(source: &Path, target: &Path) -> anyhow::Result<()> {
 }
 
 fn log_unknown_files(
-    target: &Path,
-    current_date: &str,
-    unknown_files: Vec<PathBuf>,
+    args: &Args,
+    unknown_files: &Vec<PathBuf>,
 ) -> io::Result<()> {
-    let log_path = target
-        .join("Unknown Date")
-        .join(format!("unknown_files_{}.log", current_date));
+    let log_path = args.unrecognized.join("unknown_files.log");
     let mut log_file = File::create(log_path)?;
     for file in unknown_files {
         writeln!(log_file, "{}", file.display())?;
