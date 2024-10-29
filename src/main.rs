@@ -60,10 +60,16 @@ impl<T> Args<T> {
 
 fn main() -> anyhow::Result<()> {
     let args: RawArgs = argh::from_env();
-    let args = Args::new(args, fs::ErrorContextFs::new(fs::StdFs::default()));
+    let args = Args::new(
+        args,
+        fs::StatFs::new(fs::ErrorContextFs::new(fs::StdFs::default())),
+    );
     let mut ctx = AppContext::default();
     make_path(&mut ctx, &args, &args.target)?;
     sync_media(&mut ctx, &args)?;
+    let stats = args.fs.get_stats();
+    println!("Copied files: {}", stats.copied_count);
+    println!("Copied data size: {}", stats.copied_size);
     Ok(())
 }
 

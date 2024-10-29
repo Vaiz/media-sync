@@ -1,4 +1,5 @@
 use anyhow::Context;
+use std::cell::UnsafeCell;
 use std::fs::Metadata;
 use std::path::Path;
 
@@ -39,26 +40,65 @@ impl<T: Fs> Fs for ErrorContextFs<T> {
         self.0
             .create_dir_all(&path)
             .with_context(|| format!("Failed to create directory [{}]", path.as_ref().display()))
-            .into()
     }
 
     fn metadata<P: AsRef<Path>>(&self, path: P) -> anyhow::Result<Metadata> {
         self.0
             .metadata(&path)
             .with_context(|| format!("Failed to get metadata of [{}]", path.as_ref().display()))
-            .into()
     }
 
     fn copy<P: AsRef<Path>, Q: AsRef<Path>>(&self, from: P, to: Q) -> anyhow::Result<u64> {
-        self.0
-            .copy(&from, &to)
-            .with_context(|| {
-                format!(
-                    "Failed to copy from [{}] to [{}]",
-                    from.as_ref().display(),
-                    to.as_ref().display()
-                )
-            })
-            .into()
+        self.0.copy(&from, &to).with_context(|| {
+            format!(
+                "Failed to copy from [{}] to [{}]",
+                from.as_ref().display(),
+                to.as_ref().display()
+            )
+        })
+    }
+}
+
+pub(crate) struct Stats {
+    pub copied_count: i64,
+    pub copied_size: u64,
+}
+
+pub(crate) struct StatFs<T> {
+    fs: T,
+    copied_count: UnsafeCell<i64>,
+    copied_size: UnsafeCell<u64>,
+}
+
+impl<T> StatFs<T> {
+    pub(crate) fn new(fs: T) -> Self {
+        Self {
+            fs,
+            copied_count: UnsafeCell::new(0),
+            copied_size: UnsafeCell::new(0),
+        }
+    }
+    pub(crate) fn get_stats(&self) -> Stats {
+        Stats {
+            copied_count: unsafe { *self.copied_count.get() },
+            copied_size: unsafe { *self.copied_size.get() },
+        }
+    }
+}
+
+impl<T: Fs> Fs for StatFs<T> {
+    fn create_dir_all<P: AsRef<Path>>(&self, path: P) -> anyhow::Result<()> {
+        self.fs.create_dir_all(&path)
+    }
+
+    fn metadata<P: AsRef<Path>>(&self, path: P) -> anyhow::Result<Metadata> {
+        self.fs.metadata(&path)
+    }
+
+    fn copy<P: AsRef<Path>, Q: AsRef<Path>>(&self, from: P, to: Q) -> anyhow::Result<u64> {
+        let size = self.fs.copy(from, to)?;
+        unsafe { *self.copied_count.get() = (*self.copied_count.get()).saturating_add(1) };
+        unsafe { *self.copied_size.get() = (*self.copied_size.get()).saturating_add(size) };
+        Ok(size)
     }
 }
