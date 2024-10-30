@@ -325,6 +325,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "argh",
+ "bitflags 2.6.0",
  "chrono",
  "mediameta",
  "walkdir",

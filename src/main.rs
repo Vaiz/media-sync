@@ -4,6 +4,7 @@ use anyhow::Context;
 use argh::FromArgs;
 use chrono::{DateTime, Utc};
 use mediameta::extract_file_creation_date;
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -32,6 +33,11 @@ struct RawArgs {
     /// The result path should be a valid filename.
     #[argh(option, default = "\"%Y-%m-%dT%H%M%S\".to_string()")]
     target_file_pattern: String,
+
+    /// emulates a real run and outputs all copied files.
+    /// WARNING: it stores metadata of all copied files in memory for duplicate detection.
+    #[argh(switch)]
+    dry_run: bool,
 }
 
 struct Args<T> {
@@ -60,14 +66,29 @@ impl<T> Args<T> {
 
 fn main() -> anyhow::Result<()> {
     let args: RawArgs = argh::from_env();
-    let args = Args::new(
-        args,
-        fs::StatFs::new(fs::ErrorContextFs::new(fs::StdFs::default())),
-    );
     let mut ctx = AppContext::default();
-    make_path(&mut ctx, &args, &args.target)?;
-    sync_media(&mut ctx, &args)?;
-    let stats = args.fs.get_stats();
+
+    let stats = if args.dry_run {
+        let fs = fs::StatFs::new(fs::DryFs::new(
+            fs::ErrorContextFs::new(fs::StdFs::default()),
+        ));
+        let args = Args::new(args, fs);
+        let unrecognized_files = sync_media(&mut ctx, &args)?;
+        println!("Dry run results:");
+        print_dry_run(args.fs.get_underlying_fs().get_map());
+        println!("Unrecognized files:");
+        print_unknown_files(&unrecognized_files);
+        args.fs.get_stats()
+    } else {
+        let fs = fs::StatFs::new(fs::ErrorContextFs::new(fs::StdFs::default()));
+        let args = Args::new(args, fs);
+        let unrecognized_files = sync_media(&mut ctx, &args)?;
+        if !unrecognized_files.is_empty() {
+            log_unknown_files(&args, &unrecognized_files)?;
+        }
+        args.fs.get_stats()
+    };
+
     println!("Copied files: {}", stats.copied_count);
     println!("Copied data size: {}", stats.copied_size);
     Ok(())
@@ -88,9 +109,10 @@ fn make_path<F: fs::Fs>(ctx: &mut AppContext, args: &Args<F>, path: &Path) -> an
     Ok(())
 }
 
-fn sync_media<F: fs::Fs>(ctx: &mut AppContext, args: &Args<F>) -> anyhow::Result<()> {
+fn sync_media<F: fs::Fs>(ctx: &mut AppContext, args: &Args<F>) -> anyhow::Result<Vec<PathBuf>> {
     let mut unrecognized_files: Vec<PathBuf> = Vec::new();
 
+    make_path(ctx, args, &args.target)?;
     for entry in walkdir::WalkDir::new(&args.source) {
         let entry = entry.with_context(|| "Failed to enumerate source directory")?;
         let path = entry.path();
@@ -112,12 +134,7 @@ fn sync_media<F: fs::Fs>(ctx: &mut AppContext, args: &Args<F>) -> anyhow::Result
         }
     }
 
-    // If any unknown files, log their paths
-    if !unrecognized_files.is_empty() {
-        log_unknown_files(&args, &unrecognized_files)?;
-    }
-
-    Ok(())
+    Ok(unrecognized_files)
 }
 
 fn process_file<F: fs::Fs>(
@@ -168,10 +185,10 @@ fn copy_file<F: fs::Fs>(
 
     let mut target = target_dir.join(target_filename);
     let mut index = 1;
-    while target.exists() {
+    while args.fs.exists(&target) {
         let target_metadata = args.fs.metadata(&target)?;
 
-        if source_metadata.modified()? == target_metadata.modified()?
+        if source_metadata.modified() == target_metadata.modified()
             || source_metadata.len() == target_metadata.len()
         {
             println!(
@@ -198,4 +215,20 @@ fn log_unknown_files<F>(args: &Args<F>, unknown_files: &Vec<PathBuf>) -> io::Res
         writeln!(log_file, "{}", file.display())?;
     }
     Ok(())
+}
+
+fn print_unknown_files(unknown_files: &Vec<PathBuf>) {
+    for file in unknown_files {
+        println!("{}", file.display());
+    }
+}
+
+fn print_dry_run(objects: &HashMap<PathBuf, crate::fs::Metadata>) {
+    for (path, meta) in objects {
+        if meta.is_dir() {
+            println!("{}\\", path.display());
+        } else {
+            println!("{:<120} {:>10}", path.display(), meta.len());
+        }
+    }
 }

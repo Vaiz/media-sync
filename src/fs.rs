@@ -1,12 +1,33 @@
+mod dry;
+pub(crate) mod metadata;
+
 use anyhow::Context;
+pub(crate) use metadata::Metadata;
 use std::cell::UnsafeCell;
-use std::fs::Metadata;
 use std::path::Path;
+
+pub(crate) use dry::DryFs;
 
 pub(crate) trait Fs {
     fn create_dir_all<P: AsRef<Path>>(&self, path: P) -> anyhow::Result<()>;
     fn metadata<P: AsRef<Path>>(&self, path: P) -> anyhow::Result<Metadata>;
     fn copy<P: AsRef<Path>, Q: AsRef<Path>>(&self, from: P, to: Q) -> anyhow::Result<u64>;
+    fn exists<P: AsRef<Path>>(&self, path: P) -> bool;
+}
+
+pub(crate) trait ReadonlyFs {
+    fn metadata<P: AsRef<Path>>(&self, path: P) -> anyhow::Result<Metadata>;
+    fn exists<P: AsRef<Path>>(&self, path: P) -> bool;
+}
+
+impl<T: Fs> ReadonlyFs for T {
+    fn metadata<P: AsRef<Path>>(&self, path: P) -> anyhow::Result<Metadata> {
+        self.metadata(path)
+    }
+
+    fn exists<P: AsRef<Path>>(&self, path: P) -> bool {
+        self.exists(path)
+    }
 }
 
 #[derive(Default)]
@@ -19,11 +40,15 @@ impl Fs for StdFs {
     }
 
     fn metadata<P: AsRef<Path>>(&self, path: P) -> anyhow::Result<Metadata> {
-        Ok(std::fs::metadata(path)?)
+        Ok(std::fs::metadata(path)?.into())
     }
 
     fn copy<P: AsRef<Path>, Q: AsRef<Path>>(&self, from: P, to: Q) -> anyhow::Result<u64> {
         Ok(std::fs::copy(from, to)?)
+    }
+
+    fn exists<P: AsRef<Path>>(&self, path: P) -> bool {
+        path.as_ref().exists()
     }
 }
 
@@ -57,6 +82,10 @@ impl<T: Fs> Fs for ErrorContextFs<T> {
             )
         })
     }
+
+    fn exists<P: AsRef<Path>>(&self, path: P) -> bool {
+        self.0.exists(path)
+    }
 }
 
 pub(crate) struct Stats {
@@ -84,6 +113,10 @@ impl<T> StatFs<T> {
             copied_size: unsafe { *self.copied_size.get() },
         }
     }
+
+    pub(crate) fn get_underlying_fs(&self) -> &T {
+        &self.fs
+    }
 }
 
 impl<T: Fs> Fs for StatFs<T> {
@@ -100,5 +133,9 @@ impl<T: Fs> Fs for StatFs<T> {
         unsafe { *self.copied_count.get() = (*self.copied_count.get()).saturating_add(1) };
         unsafe { *self.copied_size.get() = (*self.copied_size.get()).saturating_add(size) };
         Ok(size)
+    }
+
+    fn exists<P: AsRef<Path>>(&self, path: P) -> bool {
+        self.fs.exists(path)
     }
 }
