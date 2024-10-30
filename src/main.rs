@@ -1,5 +1,6 @@
 pub(crate) mod fs;
 
+use crate::fs::Metadata;
 use anyhow::Context;
 use argh::FromArgs;
 use chrono::{DateTime, Utc};
@@ -224,7 +225,9 @@ fn print_unknown_files(unknown_files: &Vec<PathBuf>) {
 }
 
 fn print_dry_run(objects: &HashMap<PathBuf, crate::fs::Metadata>) {
-    for (path, meta) in objects {
+    let mut sorted: Vec<(&PathBuf, &Metadata)> = objects.iter().collect();
+    sorted.sort_by(|(path1, _), (path2, _)| path1.cmp(path2));
+    for (path, meta) in sorted {
         if meta.is_dir() {
             println!("{}\\", path.display());
         } else {
