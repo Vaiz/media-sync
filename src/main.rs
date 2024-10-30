@@ -15,11 +15,11 @@ use std::path::{Path, PathBuf};
 struct RawArgs {
     /// source path to recursively search for media files.
     #[argh(positional)]
-    source: PathBuf,
+    source: String,
 
     /// target path to store organized media files.
     #[argh(positional)]
-    target: PathBuf,
+    target: String,
 
     /// subfolder for unrecognized media.
     #[argh(option, default = "\"unrecognized\".to_string()")]
@@ -53,15 +53,21 @@ struct Args<T> {
 impl<T> Args<T> {
     fn new(value: RawArgs, fs: T) -> Self {
         let current_date = Utc::now().format("%Y-%m-%dT%H%M%S").to_string();
-        let unrecognized = value.target.join(&value.unrecognized).join(&current_date);
+        let target: PathBuf = Self::fix_separator(&value.target).into();
+        let unrecognized = target.join(&value.unrecognized).join(&current_date);
         Self {
-            source: value.source,
-            target: value.target,
+            source: Self::fix_separator(&value.source).into(),
+            target,
             unrecognized,
-            target_dir_pattern: value.target_dir_pattern,
+            target_dir_pattern: Self::fix_separator(&value.target_dir_pattern),
             target_file_pattern: value.target_file_pattern,
             fs,
         }
+    }
+
+    fn fix_separator(s: &str) -> String {
+        s.replace("\\", std::path::MAIN_SEPARATOR_STR)
+            .replace("/", std::path::MAIN_SEPARATOR_STR)
     }
 }
 
