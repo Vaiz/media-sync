@@ -76,9 +76,7 @@ fn main() -> anyhow::Result<()> {
     let mut ctx = AppContext::default();
 
     let stats = if args.dry_run {
-        let fs = fs::StatFs::new(fs::DryFs::new(
-            fs::ErrorContextFs::new(fs::StdFs::default()),
-        ));
+        let fs = fs::StatFs::new(fs::DryFs::new(fs::ErrorContextFs::new(fs::StdFs)));
         let args = Args::new(args, fs);
         let unrecognized_files = sync_media(&mut ctx, &args)?;
         println!("Dry run results:");
@@ -87,7 +85,7 @@ fn main() -> anyhow::Result<()> {
         print_unknown_files(&unrecognized_files);
         args.fs.get_stats()
     } else {
-        let fs = fs::StatFs::new(fs::ErrorContextFs::new(fs::StdFs::default()));
+        let fs = fs::StatFs::new(fs::ErrorContextFs::new(fs::StdFs));
         let args = Args::new(args, fs);
         let unrecognized_files = sync_media(&mut ctx, &args)?;
         if !unrecognized_files.is_empty() {
@@ -124,20 +122,20 @@ fn sync_media<F: fs::Fs>(ctx: &mut AppContext, args: &Args<F>) -> anyhow::Result
         let entry = entry.with_context(|| "Failed to enumerate source directory")?;
         let path = entry.path();
         if path.is_file() {
-            if !can_be_media_file(&path) {
+            if !can_be_media_file(path) {
                 unrecognized_files.push(path.to_path_buf());
                 continue;
             }
             let creation_date = extract_file_creation_date(path);
             if creation_date.is_err() {
-                process_unrecognized_file(ctx, &args, path).with_context(|| {
+                process_unrecognized_file(ctx, args, path).with_context(|| {
                     format!("Failed to process the file [{}]", path.to_string_lossy())
                 })?;
                 unrecognized_files.push(path.to_path_buf());
                 continue;
             }
             let creation_date: DateTime<Utc> = creation_date.unwrap().into();
-            process_file(ctx, args, &path, &args.target, &creation_date)
+            process_file(ctx, args, path, &args.target, &creation_date)
                 .with_context(|| format!("Failed to process file [{}]", path.to_string_lossy()))?;
         }
     }
@@ -148,12 +146,31 @@ fn sync_media<F: fs::Fs>(ctx: &mut AppContext, args: &Args<F>) -> anyhow::Result
 fn can_be_media_file(path: &Path) -> bool {
     match path.extension() {
         None => true,
-        Some(ext) => match ext.to_string_lossy().to_lowercase().as_str() {
-            "exe" | "txt" | "json" | "docx" | "pdf" | "csv" | "xls" | "xlsx" | "xml" | "html"
-            | "htm" | "md" | "rtf" | "ppt" | "pptx" | "log" | "bat" | "sh" | "config" | "yaml"
-            | "yml" | "ini" => false,
-            _ => true,
-        },
+        Some(ext) => !matches!(
+            ext.to_string_lossy().to_lowercase().as_str(),
+            "bat"
+                | "config"
+                | "csv"
+                | "docx"
+                | "exe"
+                | "htm"
+                | "html"
+                | "ini"
+                | "json"
+                | "log"
+                | "md"
+                | "pdf"
+                | "ppt"
+                | "pptx"
+                | "rtf"
+                | "sh"
+                | "txt"
+                | "xls"
+                | "xlsx"
+                | "xml"
+                | "yaml"
+                | "yml"
+        ),
     }
 }
 
@@ -224,7 +241,7 @@ fn copy_file<F: fs::Fs>(
         index += 1;
     }
 
-    args.fs.copy(&source, &target)?;
+    args.fs.copy(source, &target)?;
     Ok(())
 }
 
