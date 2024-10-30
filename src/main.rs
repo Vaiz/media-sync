@@ -124,13 +124,14 @@ fn sync_media<F: fs::Fs>(ctx: &mut AppContext, args: &Args<F>) -> anyhow::Result
         let entry = entry.with_context(|| "Failed to enumerate source directory")?;
         let path = entry.path();
         if path.is_file() {
+            if !can_be_media_file(&path) {
+                unrecognized_files.push(path.to_path_buf());
+                continue;
+            }
             let creation_date = extract_file_creation_date(path);
             if creation_date.is_err() {
                 process_unrecognized_file(ctx, &args, path).with_context(|| {
-                    format!(
-                        "Failed to process unrecognized file [{}]",
-                        path.to_string_lossy()
-                    )
+                    format!("Failed to process the file [{}]", path.to_string_lossy())
                 })?;
                 unrecognized_files.push(path.to_path_buf());
                 continue;
@@ -142,6 +143,18 @@ fn sync_media<F: fs::Fs>(ctx: &mut AppContext, args: &Args<F>) -> anyhow::Result
     }
 
     Ok(unrecognized_files)
+}
+
+fn can_be_media_file(path: &Path) -> bool {
+    match path.extension() {
+        None => true,
+        Some(ext) => match ext.to_string_lossy().to_lowercase().as_str() {
+            "exe" | "txt" | "json" | "docx" | "pdf" | "csv" | "xls" | "xlsx" | "xml" | "html"
+            | "htm" | "md" | "rtf" | "ppt" | "pptx" | "log" | "bat" | "sh" | "config" | "yaml"
+            | "yml" | "ini" => false,
+            _ => true,
+        },
+    }
 }
 
 fn process_file<F: fs::Fs>(
