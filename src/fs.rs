@@ -1,4 +1,4 @@
-mod dry;
+pub(crate) mod dry;
 pub(crate) mod metadata;
 
 use anyhow::Context;

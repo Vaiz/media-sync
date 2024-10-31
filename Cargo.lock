@@ -333,14 +333,15 @@ dependencies = [
 
 [[package]]
 name = "mediameta"
-version = "0.1.2"
+version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e9eb78bb878acfe19cf62534a2de51cb2142b80c382918f69f370f18cce06b49"
+checksum = "f2831323d80d1a4b2a2900d8c6ff078a6d74612bb52b2f494c5094db8473b858"
 dependencies = [
  "anyhow",
  "chrono",
  "cmd_lib",
  "kamadak-exif",
+ "log",
  "matroska",
  "mp4",
  "serde",
