@@ -12,32 +12,32 @@ use std::path::{Path, PathBuf};
 /// Organize a media library by creation date, moving media files from source to target directory.
 #[derive(FromArgs)]
 struct RawArgs {
-    /// source path to recursively search for media files.
+    /// path to the source directory where media files will be recursively searched.
     #[argh(positional)]
     source: String,
 
-    /// target path to store organized media files.
+    /// path to the target directory where organized media files will be stored.
     #[argh(positional)]
     target: String,
 
-    /// subfolder for unrecognized media.
+    /// name of the subfolder for unrecognized media files.
     #[argh(option, default = "\"unrecognized\".to_string()")]
     unrecognized: String,
 
-    /// allows to customize target dir based on media creation time.
-    /// The result path should be a set of folders.
+    /// custom pattern for organizing the target directory based on media creation time.
+    /// The resulting path will be structured in subfolders.
     /// Default: %Y/%m/%d
     #[argh(option, default = "\"%Y/%m/%d\".to_string()")]
     target_dir_pattern: String,
 
-    /// allows to customize target filename based on media creation time.
-    /// The result path should be a valid filename.
+    /// custom pattern for naming the target file based on media creation time.
+    /// The resulting name should be a valid filename.
     /// Default: %Y-%m-%dT%H%M%S
     #[argh(option, default = "\"%Y-%m-%dT%H%M%S\".to_string()")]
     target_file_pattern: String,
 
-    /// emulates a real run and outputs all copied files.
-    /// WARNING: it stores metadata of all copied files in memory for duplicate detection.
+    /// simulates the run, outputting all file copy operations without making changes.
+    /// WARNING: Stores metadata of all copied files in memory for duplicate detection.
     #[argh(switch)]
     dry_run: bool,
 }
