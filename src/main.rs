@@ -5,7 +5,6 @@ use anyhow::Context;
 use argh::FromArgs;
 use chrono::{DateTime, Utc};
 use mediameta::extract_file_creation_date;
-use std::collections::HashMap;
 use std::fs::File;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -27,11 +26,13 @@ struct RawArgs {
 
     /// allows to customize target dir based on media creation time.
     /// The result path should be a set of folders.
+    /// Default: %Y/%m/%d
     #[argh(option, default = "\"%Y/%m/%d\".to_string()")]
     target_dir_pattern: String,
 
     /// allows to customize target filename based on media creation time.
     /// The result path should be a valid filename.
+    /// Default: %Y-%m-%dT%H%M%S
     #[argh(option, default = "\"%Y-%m-%dT%H%M%S\".to_string()")]
     target_file_pattern: String,
 
@@ -81,7 +82,6 @@ fn main() -> anyhow::Result<()> {
         let unrecognized_files = sync_media(&mut ctx, &args)?;
         println!("Dry run results:");
         print_dry_run(args.fs.get_underlying_fs().get_map());
-        println!("Unrecognized files:");
         print_unknown_files(&unrecognized_files);
         args.fs.get_stats()
     } else {
@@ -255,19 +255,26 @@ fn log_unknown_files<F>(args: &Args<F>, unknown_files: &Vec<PathBuf>) -> io::Res
 }
 
 fn print_unknown_files(unknown_files: &Vec<PathBuf>) {
+    if unknown_files.is_empty() {
+        return;
+    }
+    println!("Unrecognized files:");
     for file in unknown_files {
         println!("{}", file.display());
     }
 }
 
-fn print_dry_run(objects: &HashMap<PathBuf, crate::fs::Metadata>) {
-    let mut sorted: Vec<(&PathBuf, &Metadata)> = objects.iter().collect();
+fn print_dry_run(objects: &fs::dry::ObjectMap) {
+    let mut sorted: Vec<(&PathBuf, &(Metadata, Option<PathBuf>))> = objects.iter().collect();
     sorted.sort_by(|(path1, _), (path2, _)| path1.cmp(path2));
-    for (path, meta) in sorted {
+    for (path, (meta, source)) in sorted {
         if meta.is_dir() {
             println!("{}\\", path.display());
         } else {
             println!("{:<120} {:>10}", path.display(), meta.len());
+            if let Some(source) = source {
+                println!("╰── {}", source.display())
+            }
         }
     }
 }

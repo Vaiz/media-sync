@@ -5,9 +5,11 @@ use std::cell::UnsafeCell;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+pub(crate) type ObjectMap = HashMap<PathBuf, (Metadata, Option<PathBuf>)>;
+
 pub(crate) struct DryFs<T> {
     fs: T,
-    objects: UnsafeCell<HashMap<PathBuf, Metadata>>,
+    objects: UnsafeCell<HashMap<PathBuf, (Metadata, Option<PathBuf>)>>,
 }
 
 impl<T> DryFs<T> {
@@ -18,15 +20,15 @@ impl<T> DryFs<T> {
         }
     }
 
-    fn add_object(&self, path: PathBuf, meta: Metadata) {
-        unsafe { (*self.objects.get()).insert(path, meta) };
+    fn add_object(&self, path: PathBuf, meta: Metadata, source: Option<PathBuf>) {
+        unsafe { (*self.objects.get()).insert(path, (meta, source)) };
     }
 
     fn find_object<P: AsRef<Path>>(&self, path: P) -> Option<&Metadata> {
-        unsafe { (*self.objects.get()).get(path.as_ref()) }
+        unsafe { (*self.objects.get()).get(path.as_ref()) }.map(|item| &item.0)
     }
 
-    pub(crate) fn get_map(&self) -> &HashMap<PathBuf, Metadata> {
+    pub(crate) fn get_map(&self) -> &ObjectMap {
         unsafe { &*self.objects.get() }
     }
 }
@@ -40,7 +42,7 @@ impl<T: ReadonlyFs> Fs for DryFs<T> {
             format!("Cannot get parent path from [{}]", path.as_ref().display())
         })?;
         self.create_dir_all(parent)?;
-        self.add_object(path.as_ref().to_path_buf(), Metadata::dummy_folder());
+        self.add_object(path.as_ref().to_path_buf(), Metadata::dummy_folder(), None);
         Ok(())
     }
 
@@ -56,9 +58,13 @@ impl<T: ReadonlyFs> Fs for DryFs<T> {
         if Fs::exists(self, &to) {
             bail!("Object [{}] already exist", to.as_ref().display());
         }
-        let meta = Fs::metadata(self, from)?;
+        let meta = Fs::metadata(self, &from)?;
         let len = meta.len();
-        self.add_object(to.as_ref().to_path_buf(), meta);
+        self.add_object(
+            to.as_ref().to_path_buf(),
+            meta,
+            Some(from.as_ref().to_path_buf()),
+        );
         Ok(len)
     }
 
