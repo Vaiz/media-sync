@@ -46,6 +46,10 @@ struct RawArgs {
     /// WARNING: Stores metadata of all copied files in memory for duplicate detection.
     #[argh(switch)]
     dry_run: bool,
+
+    /// enables output of recognized duplicates' paths
+    #[argh(switch)]
+    print_duplicates: bool,
 }
 
 struct Args {
@@ -54,6 +58,7 @@ struct Args {
     pub unrecognized: PathBuf,
     pub target_dir_pattern: String,
     pub target_file_pattern: String,
+    pub print_duplicates: bool,
     pub dry_run: bool,
     pub fs: Box<dyn Fs>,
 }
@@ -69,6 +74,7 @@ impl Args {
             unrecognized,
             target_dir_pattern: Self::fix_separator(&value.target_dir_pattern),
             target_file_pattern: value.target_file_pattern,
+            print_duplicates: value.print_duplicates,
             dry_run: value.dry_run,
             fs,
         }
@@ -138,14 +144,16 @@ fn main() -> anyhow::Result<()> {
         log_unknown_files(&args, &unrecognized_files)?;
     };
 
-    println!("Copied files: {}", stats.copied_count());
-    println!("Copied data size: {}", stats.copied_size());
+    println!("Copied files: {}", stats.copied_count);
+    println!("Copied data size: {}", stats.copied_size);
+    println!("Duplicates count: {}", ctx.duplicates_count);
     Ok(())
 }
 
 #[derive(Default, Debug)]
 struct AppContext {
     created_dirs: std::collections::HashSet<PathBuf>,
+    duplicates_count: u64,
 }
 
 fn make_path(ctx: &mut AppContext, args: &Args, path: &Path) -> anyhow::Result<()> {
@@ -234,7 +242,7 @@ fn process_file(
         target_filename = format!("{target_filename}.{}", extension.to_string_lossy())
     }
 
-    copy_file(args, path, &target_dir, &target_filename)?;
+    copy_file(ctx, args, path, &target_dir, &target_filename)?;
     Ok(())
 }
 
@@ -244,10 +252,11 @@ fn process_unrecognized_file(ctx: &mut AppContext, args: &Args, path: &Path) -> 
         .expect("Cannot extract filename")
         .to_string_lossy();
     make_path(ctx, args, &args.unrecognized)?;
-    copy_file(args, path, &args.unrecognized, &file_name)
+    copy_file(ctx, args, path, &args.unrecognized, &file_name)
 }
 
 fn copy_file(
+    ctx: &mut AppContext,
     args: &Args,
     source: &Path,
     target_dir: &Path,
@@ -268,11 +277,14 @@ fn copy_file(
         if source_metadata.modified() == target_metadata.modified()
             || source_metadata.len() == target_metadata.len()
         {
-            println!(
-                "Duplicate has been found. Source: [{}], Target: [{}]",
-                source.display(),
-                target.display()
-            );
+            if args.print_duplicates {
+                println!(
+                    "Duplicate has been found. Source: [{}], Target: [{}]",
+                    source.display(),
+                    target.display()
+                );
+            }
+            ctx.duplicates_count = ctx.duplicates_count.saturating_add(1);
             return Ok(());
         }
 
