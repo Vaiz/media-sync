@@ -1,13 +1,16 @@
 # media-sync
 
-A command-line tool to organize a media library by moving media files from a source directory to a target directory, structured by the creation date of each file. This program is designed to help maintain an organized library by sorting files into date-based folders and optionally renaming them.
+A command-line tool to organize a media library by moving media files from a source directory to a target directory, 
+structured by the creation date of each file. This program is designed to help maintain an organized library by sorting 
+files into date-based folders and optionally renaming them.
 
 ## Features
 
-- Organize files in based on customizable date-based subfolder and filename patterns.
-- The program can be rerun with the same parameters, and any duplicates will be resolved automatically.
-- If tool cannot extract creation date from a file, it puts the file into `unrecognized` dir.
-- Support for dry-run.
+- Organizes files based on customizable date-based subfolder and filename patterns.
+- Can be rerun with the same parameters, automatically resolving any duplicates.
+- Automatically recognizes CoW volumes and uses reflink instead of copy if supported.
+- Puts files into the `unrecognized` directory if it cannot extract the creation date.
+- Supports dry-run mode.
 
 
 ## Installation
@@ -61,13 +64,13 @@ This program uses `chrono` crate for datetime formatting. More information can b
 #### Organize Files with Default Patterns
 
 ```bash
-media-organizer /path/to/source /path/to/target
+media-sync /path/to/source /path/to/target
 ```
 
 #### Specify Custom Patterns
 
 ```bash
-media-organizer /path/to/source /path/to/target --target-dir-pattern "%Y/%m" --target-file-pattern "%H%M"
+media-sync /path/to/source /path/to/target --target-dir-pattern "%Y/%m" --target-file-pattern "%H%M"
 ```
 
 This command organizes files by year and month in subdirectories and names them with a time stamp.
@@ -81,41 +84,41 @@ media-sync.exe D:\tmp\test_data D:\tmp\sorted --dry-run --target-dir-pattern %Y`
 Dry run results:
 D:\tmp\sorted\
 D:\tmp\sorted\2014\
-D:\tmp\sorted\2014\2014-03-09T015545.MP4                                                                                   46536726
+D:\tmp\sorted\2014\2014-03-09T015545.MP4                       46536726
 ╰── D:\tmp\test_data\1.MP4
 D:\tmp\sorted\2016\
-D:\tmp\sorted\2016\2016-10-09T130712.MTS                                                                                   31598592
+D:\tmp\sorted\2016\2016-10-09T130712.MTS                       31598592
 ╰── D:\tmp\test_data\00000.MTS
 D:\tmp\sorted\2018\
-D:\tmp\sorted\2018\2018-08-30T113154.JPG                                                                                     902539
+D:\tmp\sorted\2018\2018-08-30T113154.JPG                         902539
 ╰── D:\tmp\test_data\12.JPG
-D:\tmp\sorted\2018\2018-08-30T113218.JPG                                                                                    1733635
+D:\tmp\sorted\2018\2018-08-30T113218.JPG                        1733635
 ╰── D:\tmp\test_data\13.JPG
-D:\tmp\sorted\2018\2018-08-30T113229.JPG                                                                                    2082226
+D:\tmp\sorted\2018\2018-08-30T113229.JPG                        2082226
 ╰── D:\tmp\test_data\11.JPG
-D:\tmp\sorted\2018\2018-09-07T160435.JPG                                                                                    1259760
+D:\tmp\sorted\2018\2018-09-07T160435.JPG                        1259760
 ╰── D:\tmp\test_data\14.JPG
 D:\tmp\sorted\2019\
-D:\tmp\sorted\2019\2019-03-13T111520.JPG                                                                                    2158680
+D:\tmp\sorted\2019\2019-03-13T111520.JPG                        2158680
 ╰── D:\tmp\test_data\2.JPG
-D:\tmp\sorted\2019\2019-03-23T174739.jpg                                                                                    2679770
+D:\tmp\sorted\2019\2019-03-23T174739.jpg                        2679770
 ╰── D:\tmp\test_data\3.jpg
-D:\tmp\sorted\2019\2019-04-19T135416.JPG                                                                                    2933967
+D:\tmp\sorted\2019\2019-04-19T135416.JPG                        2933967
 ╰── D:\tmp\test_data\4.JPG
-D:\tmp\sorted\2019\2019-04-19T151220.JPG                                                                                    3196211
+D:\tmp\sorted\2019\2019-04-19T151220.JPG                        3196211
 ╰── D:\tmp\test_data\5.JPG
-D:\tmp\sorted\2019\2019-04-19T151946.JPG                                                                                    3924456
+D:\tmp\sorted\2019\2019-04-19T151946.JPG                        3924456
 ╰── D:\tmp\test_data\6.JPG
-D:\tmp\sorted\2019\2019-04-19T153543.JPG                                                                                    3432887
+D:\tmp\sorted\2019\2019-04-19T153543.JPG                        3432887
 ╰── D:\tmp\test_data\7.JPG
-D:\tmp\sorted\2019\2019-12-13T221834.jpg                                                                                    1224990
+D:\tmp\sorted\2019\2019-12-13T221834.jpg                        1224990
 ╰── D:\tmp\test_data\10.jpg
 D:\tmp\sorted\2020\
-D:\tmp\sorted\2020\2020-03-22T183007.JPG                                                                                     376715
+D:\tmp\sorted\2020\2020-03-22T183007.JPG                         376715
 ╰── D:\tmp\test_data\8.JPG
-D:\tmp\sorted\2020\2020-04-12T143314.JPG                                                                                    4175983
+D:\tmp\sorted\2020\2020-04-12T143314.JPG                        4175983
 ╰── D:\tmp\test_data\9.JPG
-D:\tmp\sorted\2020\2020-04-12T150742.JPG                                                                                     996274
+D:\tmp\sorted\2020\2020-04-12T150742.JPG                         996274
 ╰── D:\tmp\test_data\1.JPG
 Copied files: 16
 Copied data size: 109213411

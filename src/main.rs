@@ -1,13 +1,19 @@
 pub(crate) mod fs;
 
-use crate::fs::Metadata;
+use crate::fs::cow::CowFs;
+use crate::fs::dry::ObjectMap;
+use crate::fs::stat::{StatFs, Stats};
+use crate::fs::{Fs, Metadata};
 use anyhow::Context;
 use argh::FromArgs;
 use chrono::{DateTime, Utc};
 use mediameta::extract_file_creation_date;
+use reflink_copy::ReflinkSupport;
+use std::cell::RefCell;
 use std::fs::File;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 /// Organize a media library by creation date, moving media files from source to target directory.
 #[derive(FromArgs)]
@@ -42,17 +48,18 @@ struct RawArgs {
     dry_run: bool,
 }
 
-struct Args<T> {
+struct Args {
     pub source: PathBuf,
     pub target: PathBuf,
     pub unrecognized: PathBuf,
     pub target_dir_pattern: String,
     pub target_file_pattern: String,
-    pub fs: T,
+    pub dry_run: bool,
+    pub fs: Box<dyn Fs>,
 }
 
-impl<T> Args<T> {
-    fn new(value: RawArgs, fs: T) -> Self {
+impl Args {
+    fn new(value: RawArgs, fs: Box<dyn Fs>) -> Self {
         let current_date = Utc::now().format("%Y-%m-%dT%H%M%S").to_string();
         let target: PathBuf = Self::fix_separator(&value.target).into();
         let unrecognized = target.join(&value.unrecognized).join(&current_date);
@@ -62,6 +69,7 @@ impl<T> Args<T> {
             unrecognized,
             target_dir_pattern: Self::fix_separator(&value.target_dir_pattern),
             target_file_pattern: value.target_file_pattern,
+            dry_run: value.dry_run,
             fs,
         }
     }
@@ -76,26 +84,62 @@ fn main() -> anyhow::Result<()> {
     let args: RawArgs = argh::from_env();
     let mut ctx = AppContext::default();
 
-    let stats = if args.dry_run {
-        let fs = fs::StatFs::new(fs::DryFs::new(fs::ErrorContextFs::new(fs::StdFs)));
-        let args = Args::new(args, fs);
-        let unrecognized_files = sync_media(&mut ctx, &args)?;
-        println!("Dry run results:");
-        print_dry_run(args.fs.get_underlying_fs().get_map());
-        print_unknown_files(&unrecognized_files);
-        args.fs.get_stats()
+    let stats = Rc::new(Stats::default());
+    let mut dry_fs_objects = None;
+
+    let fs: Box<dyn Fs> = if args.dry_run {
+        dry_fs_objects = Some(RefCell::new(ObjectMap::new()));
+        Box::new(StatFs::new(
+            fs::DryFs::new(
+                fs::ErrorContextFs::new(fs::StdFs),
+                RefCell::clone(dry_fs_objects.as_ref().unwrap()),
+            ),
+            Rc::clone(&stats),
+        ))
     } else {
-        let fs = fs::StatFs::new(fs::ErrorContextFs::new(fs::StdFs));
-        let args = Args::new(args, fs);
-        let unrecognized_files = sync_media(&mut ctx, &args)?;
-        if !unrecognized_files.is_empty() {
-            log_unknown_files(&args, &unrecognized_files)?;
+        let reflink_support = reflink_copy::check_reflink_support(&args.source, &args.target);
+        println!("reflink support: {:?}", reflink_support);
+
+        let make_default_fs = || {
+            Box::new(StatFs::new(
+                fs::ErrorContextFs::new(fs::StdFs),
+                Rc::clone(&stats),
+            ))
+        };
+
+        match reflink_support {
+            Ok(ReflinkSupport::NotSupported) => {
+                println!("reflink support is not supported");
+                make_default_fs()
+            }
+            Err(e) => {
+                eprintln!("check_reflink_support returned an error: {:?}", e);
+                make_default_fs()
+            }
+            Ok(reflink_support) => {
+                println!("CoW fs will be used");
+                Box::new(StatFs::new(
+                    fs::ErrorContextFs::new(CowFs::new(fs::StdFs, reflink_support)),
+                    Rc::clone(&stats),
+                ))
+            }
         }
-        args.fs.get_stats()
     };
 
-    println!("Copied files: {}", stats.copied_count);
-    println!("Copied data size: {}", stats.copied_size);
+    println!("Fs: {}", fs.name());
+    let args = Args::new(args, fs);
+    let unrecognized_files = sync_media(&mut ctx, &args)?;
+
+    if args.dry_run {
+        println!("Dry run results:");
+        print_dry_run(&dry_fs_objects.unwrap().borrow());
+        print_unknown_files(&unrecognized_files);
+    } else if !unrecognized_files.is_empty() {
+        log_unknown_files(&args, &unrecognized_files)?;
+    };
+
+    println!("Copied files: {}", stats.copied_count());
+    println!("Copied data size: {}", stats.copied_size());
     Ok(())
 }
 
@@ -104,7 +148,7 @@ struct AppContext {
     created_dirs: std::collections::HashSet<PathBuf>,
 }
 
-fn make_path<F: fs::Fs>(ctx: &mut AppContext, args: &Args<F>, path: &Path) -> anyhow::Result<()> {
+fn make_path(ctx: &mut AppContext, args: &Args, path: &Path) -> anyhow::Result<()> {
     if ctx.created_dirs.contains(path) {
         return Ok(());
     }
@@ -114,7 +158,7 @@ fn make_path<F: fs::Fs>(ctx: &mut AppContext, args: &Args<F>, path: &Path) -> an
     Ok(())
 }
 
-fn sync_media<F: fs::Fs>(ctx: &mut AppContext, args: &Args<F>) -> anyhow::Result<Vec<PathBuf>> {
+fn sync_media(ctx: &mut AppContext, args: &Args) -> anyhow::Result<Vec<PathBuf>> {
     let mut unrecognized_files: Vec<PathBuf> = Vec::new();
 
     make_path(ctx, args, &args.target)?;
@@ -174,9 +218,9 @@ fn can_be_media_file(path: &Path) -> bool {
     }
 }
 
-fn process_file<F: fs::Fs>(
+fn process_file(
     ctx: &mut AppContext,
-    args: &Args<F>,
+    args: &Args,
     path: &Path,
     target: &Path,
     creation_date: &DateTime<Utc>,
@@ -194,11 +238,7 @@ fn process_file<F: fs::Fs>(
     Ok(())
 }
 
-fn process_unrecognized_file<F: fs::Fs>(
-    ctx: &mut AppContext,
-    args: &Args<F>,
-    path: &Path,
-) -> anyhow::Result<()> {
+fn process_unrecognized_file(ctx: &mut AppContext, args: &Args, path: &Path) -> anyhow::Result<()> {
     let file_name = path
         .file_name()
         .expect("Cannot extract filename")
@@ -207,8 +247,8 @@ fn process_unrecognized_file<F: fs::Fs>(
     copy_file(args, path, &args.unrecognized, &file_name)
 }
 
-fn copy_file<F: fs::Fs>(
-    args: &Args<F>,
+fn copy_file(
+    args: &Args,
     source: &Path,
     target_dir: &Path,
     target_filename: &str,
@@ -245,7 +285,7 @@ fn copy_file<F: fs::Fs>(
     Ok(())
 }
 
-fn log_unknown_files<F>(args: &Args<F>, unknown_files: &Vec<PathBuf>) -> io::Result<()> {
+fn log_unknown_files(args: &Args, unknown_files: &Vec<PathBuf>) -> io::Result<()> {
     let log_path = args.unrecognized.join("unknown_files.log");
     let mut log_file = File::create(log_path)?;
     for file in unknown_files {
