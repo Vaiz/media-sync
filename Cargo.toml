@@ -1,10 +1,10 @@
 [package]
 name = "media-sync"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 
 [dependencies]
-anyhow = "1.0.91"
+anyhow = "1.0.93"
 argh = "0.1.12"
 bitflags = "2.6.0"
 chrono = "0.4.38"
