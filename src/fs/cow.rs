@@ -60,12 +60,12 @@ impl<T: Fs> Fs for CowFs<T> {
 
     fn copy(&self, from: &Path, to: &Path) -> anyhow::Result<u64> {
         match self.reflink_state.load(Relaxed) {
-            0 => reflink_copy::reflink(&from, &to)
+            0 => reflink_copy::reflink(from, to)
                 .with_context(|| {
                     format!("failed to reflink {} to {}", from.display(), to.display())
                 })
                 .map(|_| 0),
-            1 => match reflink_copy::reflink_or_copy(&from, &to)? {
+            1 => match reflink_copy::reflink_or_copy(from, to)? {
                 None => {
                     self.success_reflinks.fetch_add(1, Relaxed);
                     Ok(0)

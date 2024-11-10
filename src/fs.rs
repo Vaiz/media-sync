@@ -76,18 +76,18 @@ impl<T: Fs> Fs for ErrorContextFs<T> {
     }
     fn create_dir_all(&self, path: &Path) -> anyhow::Result<()> {
         self.0
-            .create_dir_all(&path)
+            .create_dir_all(path)
             .with_context(|| format!("Failed to create directory [{}]", path.display()))
     }
 
     fn metadata(&self, path: &Path) -> anyhow::Result<Metadata> {
         self.0
-            .metadata(&path)
+            .metadata(path)
             .with_context(|| format!("Failed to get metadata of [{}]", path.display()))
     }
 
     fn copy(&self, from: &Path, to: &Path) -> anyhow::Result<u64> {
-        self.0.copy(&from, &to).with_context(|| {
+        self.0.copy(from, to).with_context(|| {
             format!(
                 "Failed to copy from [{}] to [{}]",
                 from.display(),

@@ -132,12 +132,10 @@ fn main() -> anyhow::Result<()> {
 
     if args.dry_run {
         println!("Dry run results:");
-        print_dry_run(&*dry_fs_objects.unwrap().borrow());
+        print_dry_run(&dry_fs_objects.unwrap().borrow());
         print_unknown_files(&unrecognized_files);
-    } else {
-        if !unrecognized_files.is_empty() {
-            log_unknown_files(&args, &unrecognized_files)?;
-        }
+    } else if !unrecognized_files.is_empty() {
+        log_unknown_files(&args, &unrecognized_files)?;
     };
 
     println!("Copied files: {}", stats.copied_count());

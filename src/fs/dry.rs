@@ -31,7 +31,7 @@ impl<T: ReadonlyFs> Fs for DryFs<T> {
         format!("Dry({})", self.fs.name())
     }
     fn create_dir_all(&self, path: &Path) -> anyhow::Result<()> {
-        if Fs::exists(self, &path) {
+        if Fs::exists(self, path) {
             return Ok(());
         }
 
@@ -44,7 +44,7 @@ impl<T: ReadonlyFs> Fs for DryFs<T> {
     }
 
     fn metadata(&self, path: &Path) -> anyhow::Result<Metadata> {
-        if let Some(metadata) = self.find_object(&path) {
+        if let Some(metadata) = self.find_object(path) {
             Ok(metadata.clone())
         } else {
             self.fs.metadata(path)
@@ -52,16 +52,16 @@ impl<T: ReadonlyFs> Fs for DryFs<T> {
     }
 
     fn copy(&self, from: &Path, to: &Path) -> anyhow::Result<u64> {
-        if Fs::exists(self, &to) {
+        if Fs::exists(self, to) {
             bail!("Object [{}] already exist", to.display());
         }
-        let meta = Fs::metadata(self, &from)?;
+        let meta = Fs::metadata(self, from)?;
         let len = meta.len();
         self.add_object(to.to_path_buf(), meta, Some(from.to_path_buf()));
         Ok(len)
     }
 
     fn exists(&self, path: &Path) -> bool {
-        self.find_object(&path).is_some() || self.fs.exists(path)
+        self.find_object(path).is_some() || self.fs.exists(path)
     }
 }

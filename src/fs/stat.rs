@@ -39,11 +39,11 @@ impl<T: Fs> Fs for StatFs<T> {
         format!("StatFs({})", self.fs.name())
     }
     fn create_dir_all(&self, path: &Path) -> anyhow::Result<()> {
-        self.fs.create_dir_all(&path)
+        self.fs.create_dir_all(path)
     }
 
     fn metadata(&self, path: &Path) -> anyhow::Result<Metadata> {
-        self.fs.metadata(&path)
+        self.fs.metadata(path)
     }
 
     fn copy(&self, from: &Path, to: &Path) -> anyhow::Result<u64> {
