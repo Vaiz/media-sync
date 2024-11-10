@@ -1,9 +1,9 @@
 pub(crate) mod dry;
 pub(crate) mod metadata;
+pub(crate) mod stat;
 
 use anyhow::Context;
 pub(crate) use metadata::Metadata;
-use std::cell::UnsafeCell;
 use std::path::Path;
 
 pub(crate) use dry::DryFs;
@@ -85,57 +85,5 @@ impl<T: Fs> Fs for ErrorContextFs<T> {
 
     fn exists<P: AsRef<Path>>(&self, path: P) -> bool {
         self.0.exists(path)
-    }
-}
-
-pub(crate) struct Stats {
-    pub copied_count: i64,
-    pub copied_size: u64,
-}
-
-pub(crate) struct StatFs<T> {
-    fs: T,
-    copied_count: UnsafeCell<i64>,
-    copied_size: UnsafeCell<u64>,
-}
-
-impl<T> StatFs<T> {
-    pub(crate) fn new(fs: T) -> Self {
-        Self {
-            fs,
-            copied_count: UnsafeCell::new(0),
-            copied_size: UnsafeCell::new(0),
-        }
-    }
-    pub(crate) fn get_stats(&self) -> Stats {
-        Stats {
-            copied_count: unsafe { *self.copied_count.get() },
-            copied_size: unsafe { *self.copied_size.get() },
-        }
-    }
-
-    pub(crate) fn get_underlying_fs(&self) -> &T {
-        &self.fs
-    }
-}
-
-impl<T: Fs> Fs for StatFs<T> {
-    fn create_dir_all<P: AsRef<Path>>(&self, path: P) -> anyhow::Result<()> {
-        self.fs.create_dir_all(&path)
-    }
-
-    fn metadata<P: AsRef<Path>>(&self, path: P) -> anyhow::Result<Metadata> {
-        self.fs.metadata(&path)
-    }
-
-    fn copy<P: AsRef<Path>, Q: AsRef<Path>>(&self, from: P, to: Q) -> anyhow::Result<u64> {
-        let size = self.fs.copy(from, to)?;
-        unsafe { *self.copied_count.get() = (*self.copied_count.get()).saturating_add(1) };
-        unsafe { *self.copied_size.get() = (*self.copied_size.get()).saturating_add(size) };
-        Ok(size)
-    }
-
-    fn exists<P: AsRef<Path>>(&self, path: P) -> bool {
-        self.fs.exists(path)
     }
 }

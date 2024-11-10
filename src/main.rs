@@ -1,5 +1,6 @@
 pub(crate) mod fs;
 
+use crate::fs::stat::{StatFs, Stats};
 use crate::fs::Metadata;
 use anyhow::Context;
 use argh::FromArgs;
@@ -8,6 +9,7 @@ use mediameta::extract_file_creation_date;
 use std::fs::File;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 /// Organize a media library by creation date, moving media files from source to target directory.
 #[derive(FromArgs)]
@@ -76,26 +78,29 @@ fn main() -> anyhow::Result<()> {
     let args: RawArgs = argh::from_env();
     let mut ctx = AppContext::default();
 
-    let stats = if args.dry_run {
-        let fs = fs::StatFs::new(fs::DryFs::new(fs::ErrorContextFs::new(fs::StdFs)));
+    let stats = Rc::new(Stats::default());
+
+    if args.dry_run {
+        let fs = StatFs::new(
+            fs::DryFs::new(fs::ErrorContextFs::new(fs::StdFs)),
+            Rc::clone(&stats),
+        );
         let args = Args::new(args, fs);
         let unrecognized_files = sync_media(&mut ctx, &args)?;
         println!("Dry run results:");
         print_dry_run(args.fs.get_underlying_fs().get_map());
         print_unknown_files(&unrecognized_files);
-        args.fs.get_stats()
     } else {
-        let fs = fs::StatFs::new(fs::ErrorContextFs::new(fs::StdFs));
+        let fs = StatFs::new(fs::ErrorContextFs::new(fs::StdFs), Rc::clone(&stats));
         let args = Args::new(args, fs);
         let unrecognized_files = sync_media(&mut ctx, &args)?;
         if !unrecognized_files.is_empty() {
             log_unknown_files(&args, &unrecognized_files)?;
         }
-        args.fs.get_stats()
     };
 
-    println!("Copied files: {}", stats.copied_count);
-    println!("Copied data size: {}", stats.copied_size);
+    println!("Copied files: {}", stats.copied_count());
+    println!("Copied data size: {}", stats.copied_size());
     Ok(())
 }
 
