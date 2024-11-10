@@ -144,8 +144,8 @@ fn main() -> anyhow::Result<()> {
         log_unknown_files(&args, &unrecognized_files)?;
     };
 
-    println!("Copied files: {}", stats.copied_count);
-    println!("Copied data size: {}", stats.copied_size);
+    println!("Copied files: {}", stats.copied_count());
+    println!("Copied data size: {}", stats.copied_size());
     println!("Duplicates count: {}", ctx.duplicates_count);
     Ok(())
 }
