@@ -29,7 +29,7 @@ cargo build --release
 ## Usage
 
 ```bash
-media-organizer <source> <target> [options]
+media-sync <source> <target> [options]
 ```
 
 ### Positional Arguments
