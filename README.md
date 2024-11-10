@@ -1,13 +1,16 @@
 # media-sync
 
-A command-line tool to organize a media library by moving media files from a source directory to a target directory, structured by the creation date of each file. This program is designed to help maintain an organized library by sorting files into date-based folders and optionally renaming them.
+A command-line tool to organize a media library by moving media files from a source directory to a target directory, 
+structured by the creation date of each file. This program is designed to help maintain an organized library by sorting 
+files into date-based folders and optionally renaming them.
 
 ## Features
 
-- Organize files in based on customizable date-based subfolder and filename patterns.
-- The program can be rerun with the same parameters, and any duplicates will be resolved automatically.
-- If tool cannot extract creation date from a file, it puts the file into `unrecognized` dir.
-- Support for dry-run.
+- Organizes files based on customizable date-based subfolder and filename patterns.
+- Can be rerun with the same parameters, automatically resolving any duplicates.
+- Automatically recognizes CoW volumes and uses reflink instead of copy if supported.
+- Puts files into the `unrecognized` directory if it cannot extract the creation date.
+- Supports dry-run mode.
 
 
 ## Installation
