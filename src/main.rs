@@ -144,6 +144,7 @@ fn main() -> anyhow::Result<()> {
         log_unknown_files(&args, &unrecognized_files)?;
     };
 
+    println!("Scanned files: {}", ctx.total_files);
     println!("Copied files: {}", stats.copied_count());
     println!("Copied data size: {}", stats.copied_size());
     println!("Duplicates count: {}", ctx.duplicates_count);
@@ -153,6 +154,7 @@ fn main() -> anyhow::Result<()> {
 #[derive(Default, Debug)]
 struct AppContext {
     created_dirs: std::collections::HashSet<PathBuf>,
+    total_files: u64,
     duplicates_count: u64,
 }
 
@@ -174,6 +176,7 @@ fn sync_media(ctx: &mut AppContext, args: &Args) -> anyhow::Result<Vec<PathBuf>>
         let entry = entry.with_context(|| "Failed to enumerate source directory")?;
         let path = entry.path();
         if path.is_file() {
+            ctx.total_files = ctx.total_files.saturating_add(1);
             if !can_be_media_file(path) {
                 unrecognized_files.push(path.to_path_buf());
                 continue;
