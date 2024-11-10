@@ -1,5 +1,6 @@
 pub(crate) mod fs;
 
+use crate::fs::cow::CowFs;
 use crate::fs::dry::ObjectMap;
 use crate::fs::stat::{StatFs, Stats};
 use crate::fs::{Fs, Metadata};
@@ -7,6 +8,7 @@ use anyhow::Context;
 use argh::FromArgs;
 use chrono::{DateTime, Utc};
 use mediameta::extract_file_creation_date;
+use reflink_copy::ReflinkSupport;
 use std::cell::RefCell;
 use std::fs::File;
 use std::io::{self, Write};
@@ -95,12 +97,36 @@ fn main() -> anyhow::Result<()> {
             Rc::clone(&stats),
         ))
     } else {
-        Box::new(StatFs::new(
-            fs::ErrorContextFs::new(fs::StdFs),
-            Rc::clone(&stats),
-        ))
+        let reflink_support = reflink_copy::check_reflink_support(&args.source, &args.target);
+        println!("reflink support: {:?}", reflink_support);
+
+        let make_default_fs = || {
+            Box::new(StatFs::new(
+                fs::ErrorContextFs::new(fs::StdFs),
+                Rc::clone(&stats),
+            ))
+        };
+
+        match reflink_support {
+            Ok(ReflinkSupport::NotSupported) => {
+                println!("reflink support is not supported");
+                make_default_fs()
+            }
+            Err(e) => {
+                eprintln!("check_reflink_support returned an error: {:?}", e);
+                make_default_fs()
+            }
+            Ok(reflink_support) => {
+                println!("CoW fs will be used");
+                Box::new(StatFs::new(
+                    fs::ErrorContextFs::new(CowFs::new(fs::StdFs, reflink_support)),
+                    Rc::clone(&stats),
+                ))
+            }
+        }
     };
 
+    println!("Fs: {}", fs.name());
     let args = Args::new(args, fs);
     let unrecognized_files = sync_media(&mut ctx, &args)?;
 

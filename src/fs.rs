@@ -1,4 +1,4 @@
-mod cow;
+pub(crate) mod cow;
 pub(crate) mod dry;
 pub(crate) mod metadata;
 pub(crate) mod stat;
