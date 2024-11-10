@@ -32,28 +32,27 @@ impl<T> StatFs<T> {
     pub(crate) fn new(fs: T, stats: Rc<Stats>) -> Self {
         Self { fs, stats }
     }
-
-    pub(crate) fn get_underlying_fs(&self) -> &T {
-        &self.fs
-    }
 }
 
 impl<T: Fs> Fs for StatFs<T> {
-    fn create_dir_all<P: AsRef<Path>>(&self, path: P) -> anyhow::Result<()> {
+    fn name(&self) -> String {
+        format!("StatFs({})", self.fs.name())
+    }
+    fn create_dir_all(&self, path: &Path) -> anyhow::Result<()> {
         self.fs.create_dir_all(&path)
     }
 
-    fn metadata<P: AsRef<Path>>(&self, path: P) -> anyhow::Result<Metadata> {
+    fn metadata(&self, path: &Path) -> anyhow::Result<Metadata> {
         self.fs.metadata(&path)
     }
 
-    fn copy<P: AsRef<Path>, Q: AsRef<Path>>(&self, from: P, to: Q) -> anyhow::Result<u64> {
+    fn copy(&self, from: &Path, to: &Path) -> anyhow::Result<u64> {
         let size = self.fs.copy(from, to)?;
         self.stats.count_file(size);
         Ok(size)
     }
 
-    fn exists<P: AsRef<Path>>(&self, path: P) -> bool {
+    fn exists(&self, path: &Path) -> bool {
         self.fs.exists(path)
     }
 }
