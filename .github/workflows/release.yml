@@ -1,0 +1,28 @@
+name: Publish Windows Binaries
+
+on:
+  workflow_dispatch:
+    # Allows manual triggering of the workflow
+
+jobs:
+  build-and-publish:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Get version
+      id: get_version
+      run: |
+        version=$(grep '^version =' Cargo.toml | head -n 1 | cut -d '"' -f 2)
+        echo "version=$version" >> $GITHUB_ENV
+
+    - name: Build
+      run: cargo build --release
+
+    - name: Publish
+      uses: softprops/action-gh-release@v2
+      with:
+        files: target/release/media-sync.exe
+        tag_name: v${{ env.version }}
